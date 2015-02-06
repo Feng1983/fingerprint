@@ -61,6 +61,17 @@ func (c *KNN) PredictMultiClass(sample *core.Sample) *core.ArrayVector {
 	}
 	return ret
 }
+func (c *KNN) Predict2(sample *core.Samples)(x,y float64){
+	ret:= c.PredictMultiClass2(sample)
+	var x,y float64
+	K := len(ret)
+	for _,label:= range ret{
+		m,v:= getByredis(label)
+		x+=m
+		y+=v
+	}
+	return x/K, y/K
+}
 
 func (c *KNN) Train(dataset *core.DataSet) {
 	c.sv = []*core.Vector{}
