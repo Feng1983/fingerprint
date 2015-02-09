@@ -49,3 +49,5 @@ func GetRedisStat(addr string) (map[string]string, error) {
 func GetRedisConfig(addr string, configName string) (string, error) {
 	c, err := redis.DialTimeout("tcp", addr, defaultTimeout, defaultTimeout, defaultTimeout)
 	if err != nil {
+	}
+}
