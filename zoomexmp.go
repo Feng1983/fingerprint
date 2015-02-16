@@ -247,7 +247,7 @@ func main(){
 	//if err!=nil{
 	//	fmt.Println(err)
 	//}
-	/*sp:=getSamples(int64(-1))
+	sp:=getSamples(int64(-1))
 	pp:=etldata(sp)
 	cnt,rcnt:=0,0
 	rset := mapset.NewSet()
@@ -262,7 +262,7 @@ func main(){
 		cnt+=1
 	}
 	fmt.Println(cnt,"num...",rcnt,"unique mac",rset.Cardinality())
-	*/
+	
 	//fmt.Println(rset.String())
 	/*sp:=getSamples(int64(13))
 	fmt.Println(len(sp))
