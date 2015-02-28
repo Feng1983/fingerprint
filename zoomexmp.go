@@ -2,7 +2,7 @@ package main
 
 import(
 	"github.com/albrow/zoom"
-	//"github.com/deckarep/golang-set"
+	"github.com/deckarep/golang-set"
 	"fmt"
 	"strconv"
 	"strings"
@@ -11,6 +11,7 @@ import(
 	//"io/ioutil"
 	//"encoding/csv"
 	"bufio"
+	"knn2"
 )
 
 type Person struct{
@@ -75,13 +76,13 @@ func load(path string )error{
 	//zoom.Close()
 	return nil
 }
-type Finger struct{
+/*type Finger struct{
 	Label  int		`zoom:"index"`
 	X	   float64
 	Y	   float64
 	Feature map[int64] float64
 	zoom.DefaultData
-}
+}*/
 func loadfinger(path string) error{
 	file, err:= os.Open(path)
     if err!=nil{
@@ -106,7 +107,7 @@ func loadfinger(path string) error{
 			//fmt.Println(i,rssi,dmac)
 			i=i+1
 		}
-		fin:=&Finger{Label:lbel,X:x,Y:y,Feature:fs}
+		fin:=&knn2.Finger{Label:lbel,X:x,Y:y,Feature:fs}
 		zoom.Save(fin)
 	}
 	if scanner.Err() !=nil{
@@ -122,7 +123,7 @@ func Init(){
 	zoom.Init(conf)
 	zoom.Register(&Person{})
 	zoom.Register(&Rssiample{})
-	zoom.Register(&Finger{})
+	zoom.Register(&knn2.Finger{})
 }
 
 func getSamples(imac int64) []*Rssiample{
@@ -138,24 +139,24 @@ func getSamples(imac int64) []*Rssiample{
 	}
 	return sp
 }
-func getFingers()[]*Finger{
-	var rs[]*Finger
+func getFingers()[]* knn2.Finger{
+	var rs[]* knn2.Finger
 	if err:=zoom.NewQuery("Finger").Order("Label").Scan(&rs);err!=nil{
 		panic(err)
 	}
 	return rs
 }
 type RdataSet struct{
-	Samples []*MapBaseSample
+	Samples []* knn2.MapBaseSample
 	max_lable  int
 }
-type MapBaseSample struct{
+/*type MapBaseSample struct{
 	Features    map[int64]int
 	Label		int
 	Prediction  float64
 	Timestamp   int64
 	Mac			int64
-}
+}*/
 
 type RIter []*Rssiample
 func (i RIter)Iterator() func()( *Rssiample,bool){
@@ -172,7 +173,7 @@ func (i RIter)Iterator() func()( *Rssiample,bool){
 type Info struct{
 	x map[int64]int
 }
-func etldata(samples []*Rssiample)[]*MapBaseSample{
+func etldata(samples []*Rssiample)[]* knn2.MapBaseSample{
 	size:= len(samples)
 	if size<=0{
 		return nil
@@ -180,7 +181,7 @@ func etldata(samples []*Rssiample)[]*MapBaseSample{
 	start,end:= samples[0],samples[size-1]
 	var samples1= RIter(samples)
 	it:=samples1.Iterator()
-	var ret []*MapBaseSample
+	var ret []* knn2.MapBaseSample
 	for i:=start.Ts+2;i<=end.Ts+1;i+=2{
 		mapr:=make(map[int64] *Info)
 		for{
@@ -204,11 +205,13 @@ func etldata(samples []*Rssiample)[]*MapBaseSample{
 			}
 		}
 		for s,t :=range mapr{
-			ret = append(ret,&MapBaseSample{Features:t.x,Timestamp:int64(i),Mac:int64(s)})
+			ret = append(ret,&knn2.MapBaseSample{Features:t.x,Timestamp:int64(i),Mac:int64(s)})
 		}
 	}
 	return ret
 }
+
+
 func main(){
 	Init()
 	starttime:=time.Now()
@@ -251,14 +254,35 @@ func main(){
 	pp:=etldata(sp)
 	cnt,rcnt:=0,0
 	rset := mapset.NewSet()
+	var proc_data []* knn2.MapBaseSample
 	for _,m:=range pp{
 		if len(m.Features)>=2{
-			str_time := time.Unix(int64(m.Timestamp), 0).Format("2006-01-02 15:04:05")
-			fmt.Println(m,str_time)
+			//str_time := time.Unix(int64(m.Timestamp), 0).Format("2006-01-02 15:04:05")
+			//fmt.Println(m,str_time)
 			rcnt+=1
+			if len(m.Features)==2{
+				for _,v :=range m.Features{
+					if v>-70 {
+						rset.Add(m.Mac)
+						//fmt.Println(k,"...",v)
+						proc_data=append(proc_data,m)
+						break
+					}
+				}
+			}else if len(m.Features)==3{
+				rset.Add(m.Mac)
+				proc_data=append(proc_data, m)
+			}else{
+				rset.Add(m.Mac)
+			}
 			//rset.Add(m.Mac)
 		}
-		rset.Add(m.Mac)
+		for _,v:=range m.Features{
+			if v>-60 {
+				rset.Add(m.Mac)
+			}
+		}
+		//rset.Add(m.Mac)
 		cnt+=1
 	}
 	fmt.Println(cnt,"num...",rcnt,"unique mac",rset.Cardinality())
@@ -287,13 +311,30 @@ func main(){
 	//		fmt.Println(time.Unix(int64(i), 0).Format("2006-01-02 15:04:05"))
 	//}
 	*/
-	err:=loadfinger("finger.csv")
+	/*err:=loadfinger("finger.csv")
 	if err!=nil{
 		fmt.Println(err)
-	}
-	for _,v:=range getFingers(){
-		fmt.Println(v)
+	}*/
+	//ii:=0
+	//for _,v:=range getFingers(){
+	//	fmt.Println(v)
+	//	ii++
 		//zoom.DeleteById("Finger",v.GetId())
+	//}
+	//fmt.Println(ii)
+	params:=make(map[string]string)
+	params["k"]="5"
+	obj:=&knn2.KNN{}
+	obj.Init(params)
+	fingdata:= getFingers()
+	obj.Train2(fingdata)
+	for _,m :=range proc_data{
+		if len(m.Features)>=2{
+            str_time := time.Unix(int64(m.Timestamp), 0).Format("2006-01-02 15:04:05")
+            fmt.Println(m,str_time)
+			mx,my:= obj.Predict2(m)
+			fmt.Println(mx,"y... ",my)
+        }
 	}
 	fmt.Println(time.Now().Sub(starttime))
 	defer zoom.Close()
