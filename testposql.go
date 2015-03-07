@@ -7,7 +7,17 @@ import (
 	"github.com/jinzhu/gorm"
 	_ "github.com/lib/pq"
 	"log"
+	"time"
 )
+
+func getTime(tt string) int64 {
+	the_time, err := time.Parse("2006-01-02 15:04:05", tt)
+	if err == nil {
+		unix_time := the_time.Unix()
+		fmt.Println(unix_time)
+	}
+	return the_time.Unix()
+}
 
 type SampleData struct {
 	Id       int32
@@ -88,14 +98,26 @@ func closeORdb(db *gorm.DB) error {
 }
 
 func doIter(db *gorm.DB) {
-	var users []*SampleData
+	var users, users2 []*SampleData
 	db = db.Table("samples")
 	//db.AutoMigrate(&SampleData{})
 	db.Limit(10).Find(&users)
 	for i, d := range users {
 		fmt.Println(i, d)
-		fmt.Println(d.Ts)
+		//fmt.Println(d.Ts)
+		fmt.Println(time.Unix(d.Ts, 0).Format("2006-01-02 15:04:05"))
 	}
+	dd := getTime("2015-03-05 12:44:33")
+	db.Where("timestamp >= ? ", dd).Limit(20).Find(&users2)
+	for _, d := range users2 {
+		fmt.Println(d)
+		fmt.Println(time.Unix(d.Ts, 0).Format("2006-01-02 15:04:05"))
+	}
+	var psize int
+	dd2 := getTime("2015-03-06 12:44:33")
+	db.Where("timestamp >= ? and timestamp <?", dd, dd2).Count(&psize)
+	fmt.Println(psize)
+
 }
 
 func main() {
