@@ -33,8 +33,9 @@ func (b SampleData) TableName() string {
 }
 
 func openDB() *sql.DB {
-	db, err := sql.Open("postgres", "host=192.168.0.8 user=postgres password=111111 dbname=new_structure01 sslmode=disable")
+	//db, err := sql.Open("postgres", "host=192.168.0.8 user=postgres password=111111 dbname=new_structure01 sslmode=disable")
 	//db, err := sql.Open("postgres", "host=123.57.254.158 user=postgres password=111111 dbname=ailink_wifi sslmode=disable")
+	db, err := sql.Open("postgres", "host=123.57.254.158 user=postgres password=111111 dbname=ailink_wifi sslmode=disable")
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -83,7 +84,8 @@ func testdb(db *sql.DB) error {
 }
 
 func ormInit() *gorm.DB {
-	db, err := gorm.Open("postgres", "host=192.168.0.8 user=postgres password=111111 dbname=new_structure01 sslmode=disable")
+	//db, err := gorm.Open("postgres", "host=192.168.0.8 user=postgres password=111111 dbname=new_structure01 sslmode=disable")
+	db, err := gorm.Open("postgres", "host=123.57.254.158 user=postgres password=111111 dbname=ailink_wifi sslmode=disable")
 	if err != nil {
 		fmt.Println("connection error...", err)
 	}
@@ -107,27 +109,42 @@ func doIter(db *gorm.DB) {
 		//fmt.Println(d.Ts)
 		fmt.Println(time.Unix(d.Ts, 0).Format("2006-01-02 15:04:05"))
 	}
-	dd := getTime("2015-03-05 12:44:33")
+	dd := getTime("2015-03-10 12:44:33")
 	db.Where("timestamp >= ? ", dd).Limit(20).Find(&users2)
 	for _, d := range users2 {
 		fmt.Println(d)
 		fmt.Println(time.Unix(d.Ts, 0).Format("2006-01-02 15:04:05"))
 	}
 	var psize int
-	dd2 := getTime("2015-03-06 12:44:33")
+	dd2 := getTime("2015-03-12 12:44:33")
 	db.Where("timestamp >= ? and timestamp <?", dd, dd2).Count(&psize)
 	fmt.Println(psize)
 
 }
+func fectchItem(db *gorm.DB,params interface{},dd1 ,dd2 int64){
+
+	var users [] *SampleData
+	db = db.Table("samples")
+	//rows,err:= db.Raw("select * from samples where infra_mac in (?)",param)
+	//defer rows.Close()
+	db.Where("infra_mac in (?)",params).Where("timestamp >= ? and timestamp <?",dd1,dd2).Limit(200).Find(&users)
+	for _ , d :=range users{
+		fmt.Println(d,time.Unix(d.Ts, 0).Format("2006-01-02 15:04:05"))
+	}
+	var psize int
+	db.Where("infra_mac in (?)",params).Where("timestamp >= ? and timestamp <?",dd1,dd2).Count(&psize)
+	fmt.Println(psize)
+}
 
 func main() {
-	//db,err  := sql.Open("postgres","user=postgres dbname=new_structure01 sslmode=verify-full")
-	//defer db.close()
 	var dbs *sql.DB
 	dbs = openDB()
 	testdb(dbs)
 	closeDB(dbs)
 	db := ormInit()
-	doIter(db)
+	//doIter(db)
+	dd1:=getTime("2015-03-15 00:00:00")
+	dd2:=getTime("2015-03-16 00:00:00")
+	fectchItem(db,[]int{5,6,8},dd1,dd2)
 	closeORdb(db)
 }
