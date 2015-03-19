@@ -136,6 +136,15 @@ func fectchItem(db *gorm.DB,params interface{},dd1 ,dd2 int64){
 	fmt.Println(psize)
 }
 
+func loadFingers(db *gorm.DB){
+	
+}
+
+func saveDate(db *gorm.DB)error{
+	return nil
+
+}
+
 func main() {
 	var dbs *sql.DB
 	dbs = openDB()
@@ -143,8 +152,8 @@ func main() {
 	closeDB(dbs)
 	db := ormInit()
 	//doIter(db)
-	dd1:=getTime("2015-03-15 00:00:00")
-	dd2:=getTime("2015-03-16 00:00:00")
+	dd1:=getTime("2015-03-17 00:00:00")
+	dd2:=getTime("2015-03-18 00:00:00")
 	fectchItem(db,[]int{5,6,8},dd1,dd2)
 	closeORdb(db)
 }
