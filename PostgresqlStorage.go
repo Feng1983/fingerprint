@@ -13,8 +13,8 @@ import (
 	"knn2"
 )
 var (
-	au = []int{5,6,8,}
-	ch = []int{9,12,13,}
+	au = []int{5,6,8,}	//1
+	ch = []int{9,12,13,} //0
 	ErrNoPqSQLConn     = errors.New("can't get a mysql db")
 	ErrNoData		   = errors.New("NO data found.")
 	ErrExist		   = errors.New("data exists ,return.")
@@ -163,7 +163,27 @@ func (pqsDb  *PostgresqlStorage) SaveFingerData(datas[]* knn2.ProcessData, useri
 	
 	return nil
 }
-
+func (pqsDb  *PostgresqlStorage) GetSampleFromdb(id int, dd string)([]*Rssiample,err){
+	db := pqsDb.DB
+    if db==nil{
+        return nil,ErrNoPqSQLConn 
+    }
+	db = db.Table("samples")
+	dd1 := getTime(dd)
+	dd2 := Dateplus(dd,1)
+	var param []int
+	if id==0{
+		param = ch
+	}else {
+		param = au
+	}
+	db.Where("infra_mac in (?)",params).Where("timestamp >= ? and timestamp <?",dd1,dd2).Find(&users)
+	var ret []*Rssiample
+	for _, d:=range users{
+		
+	}
+	
+}
 func RedisInit(){
     conf:= &zoom.Configuration{
         Address:"localhost:59999",
