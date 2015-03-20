@@ -76,13 +76,8 @@ func load(path string )error{
 	//zoom.Close()
 	return nil
 }
-/*type Finger struct{
-	Label  int		`zoom:"index"`
-	X	   float64
-	Y	   float64
-	Feature map[int64] float64
-	zoom.DefaultData
-}*/
+
+
 func loadfinger(path string) error{
 	file, err:= os.Open(path)
     if err!=nil{
@@ -124,6 +119,7 @@ func Init(){
 	zoom.Register(&Person{})
 	zoom.Register(&Rssiample{})
 	zoom.Register(&knn2.Finger{})
+	zoom.Register(&knn2.ProcessData{})
 }
 
 func getSamples(imac int64) []*Rssiample{
@@ -334,6 +330,9 @@ func main(){
             fmt.Println(m,str_time)
 			mx,my:= obj.Predict2(m)
 			fmt.Println(mx,"y... ",my)
+			prdata:= &knn2.ProcessData{Timestamp:m.Timestamp, Mac:m.Mac,X:mx, Y:my}
+			fmt.Println(prdata)
+			//zoom.Save(prdata)
         }
 	}
 	fmt.Println(time.Now().Sub(starttime))

@@ -56,7 +56,7 @@ func (c *KNN) Predict2(sample *MapBaseSample)(x,y float64){
 }
 
 
-func (c *KNN) Train2(fingers []*Finger){
+func (c *KNN) Train2(fingers []*Finger2){
 	c.sv = []*core.Vector{}
 	c.labels = []int{}
 	if len(fingers)< 1000{

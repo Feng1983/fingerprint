@@ -1,4 +1,4 @@
-package main
+mackage main
 
 import (
 	"database/sql"
@@ -6,18 +6,17 @@ import (
 	//_ "github.com/bmizerany/pq"
 	"github.com/jinzhu/gorm"
 	_ "github.com/lib/pq"
+	"github.com/albrow/zoom"
 	"log"
 	"time"
+	"errors"
+	"knn2"
+)
+var (
+	au = []int{5,6,8,}
+	ch = []int{9,12,13,}
 )
 
-func getTime(tt string) int64 {
-	the_time, err := time.Parse("2006-01-02 15:04:05", tt)
-	if err == nil {
-		unix_time := the_time.Unix()
-		fmt.Println(unix_time)
-	}
-	return the_time.Unix()
-}
 
 type SampleData struct {
 	Id       int32
@@ -26,6 +25,30 @@ type SampleData struct {
 	Devmac   int64 `gorm:"column:device_mac"`
 	Rssi     int16
 	Freq     int16 `gorm:"column:frequency"`
+}
+
+type FinMatchData struct{
+	StoreId	int32 `gorm:"column:store_id"`
+	UserId	int32 `gorm:"column:user_id"`
+	Ts		int64 
+	Mac		int64
+	X		float64
+	Y		float64 
+}
+type PostgresqlStorage{
+	DB	*gorm.DB	
+}
+//init sqlStorage
+func NewPostgresqlStorage() *PostgresqlStorage{
+	
+}
+func getTime(tt string) int64 {
+    the_time, err := time.Parse("2006-01-02 15:04:05", tt)
+    if err != nil {
+        unix_time := the_time.Unix()
+        fmt.Println(unix_time)
+    }
+    return the_time.Unix()
 }
 
 func (b SampleData) TableName() string {
@@ -136,14 +159,73 @@ func fectchItem(db *gorm.DB,params interface{},dd1 ,dd2 int64){
 	fmt.Println(psize)
 }
 
-func loadFingers(db *gorm.DB){
-	
+func loadFingers(loc int, db *gorm.DB){
+	var findata []*knn2.FingerOri
+	var id int
+	res,_ := zoom.NewQuery("Finger2").Filter("Id= ",loc).Count()
+	if res !=0{
+	 return
+	}
+	if loc ==1{
+		db=db.Table("au_finger_data")
+		id=1
+	}else{
+		db=db.Table("cn_finger_data")
+		id=0
+	}
+	db.Find(&findata)
+
+	for _, d :=range findata{
+		//fmt.Println(d)
+		fs:=make(map[int64]float64)
+		fs[int64(d.Ap1)]= d.Freq1
+		fs[int64(d.Ap2)]= d.Freq2
+		fs[int64(d.Ap3)]= d.Freq3
+		
+		fin:=&knn2.Finger2{Id:id,Label:d.Id,X:d.X,Y:d.Y,Feature:fs}
+		fmt.Println(fin)
+		zoom.save(fin)
+	}
 }
 
 func saveDate(db *gorm.DB)error{
 	return nil
-
 }
+
+func SaveFingerData(db* gorm.DB, datas[]* knn2.ProcessData, userid storeid int) error{
+	var err error
+	if len(datas)==0{
+		err.New("None data found")
+		return err
+	}
+	for _, d:=range datas{
+		ds:= FinMatchData{
+			StoreId:storeid,
+			UserId:userid,
+			Ts:d.Timestamp,
+			Mac:d.Mac,
+			X: d.X,
+			Y: d.Y,		
+		}	
+		db.Create(&ds)
+	}
+	
+	return nil
+}
+
+func RedisInit(){
+    conf:= &zoom.Configuration{
+        Address:"localhost:59999",
+        Network:"tcp",
+    }
+    zoom.Init(conf)
+    //zoom.Register(&Person{})
+    //zoom.Register(&Rssiample{})
+    zoom.Register(&knn2.Finger{})
+    zoom.Register(&knn2.ProcessData{})
+	zoom.Register(&knn2.Finger2{})
+}
+
 
 func main() {
 	var dbs *sql.DB
@@ -155,5 +237,6 @@ func main() {
 	dd1:=getTime("2015-03-17 00:00:00")
 	dd2:=getTime("2015-03-18 00:00:00")
 	fectchItem(db,[]int{5,6,8},dd1,dd2)
+	loadFingers(1,db)
 	closeORdb(db)
 }
