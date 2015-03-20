@@ -1,13 +1,11 @@
-mackage main
+package main
 
 import (
-	"database/sql"
+	//"database/sql"
 	"fmt"
-	//_ "github.com/bmizerany/pq"
 	"github.com/jinzhu/gorm"
 	_ "github.com/lib/pq"
 	"github.com/albrow/zoom"
-	"log"
 	"time"
 	"errors"
 	"knn2"
@@ -38,9 +36,11 @@ type FinMatchData struct{
 	X		float64
 	Y		float64 
 }
-type PostgresqlStorage{
+
+type PostgresqlStorage struct{
 	DB	*gorm.DB	
 }
+
 //init sqlStorage
 func NewPostgresqlStorage() *PostgresqlStorage{
 	db, err := gorm.Open("postgres", "host=123.57.254.158 user=postgres password=111111 dbname=ailink_wifi sslmode=disable")
@@ -57,7 +57,11 @@ func (b SampleData) TableName() string {
 
 
 
-func closeORdb(db *gorm.DB) error {
+func (pqsDb *PostgresqlStorage)CloseORdb() error {
+	db:= pqsDb.DB
+	if db==nil{
+		return ErrNoPqSQLConn
+	}
 	err := db.Close()
 	return err
 }
@@ -105,7 +109,7 @@ func (pqsDb *PostgresqlStorage) FectchItem(params interface{},dd1 ,dd2 int64) er
 
 func (pqsDb  *PostgresqlStorage) LoadFingers(loc int) error{
 	var findata []*knn2.FingerOri
-	var id in
+	var id int
 	db := pqsDb.DB
 	if db==nil{
 		return ErrNoPqSQLConn
@@ -132,7 +136,7 @@ func (pqsDb  *PostgresqlStorage) LoadFingers(loc int) error{
 		
 		fin:=&knn2.Finger2{Id:id,Label:d.Id,X:d.X,Y:d.Y,Feature:fs}
 		fmt.Println(fin)
-		zoom.save(fin)
+		zoom.Save(fin)
 	}
 	return nil
 }
@@ -151,8 +155,8 @@ func (pqsDb  *PostgresqlStorage) SaveFingerData(datas[]* knn2.ProcessData, useri
 	}
 	for _, d:=range datas{
 		ds:= FinMatchData{
-			StoreId:storeid,
-			UserId:userid,
+			StoreId:int32(storeid),
+			UserId:int32(userid),
 			Ts:d.Timestamp,
 			Mac:d.Mac,
 			X: d.X,
@@ -163,49 +167,58 @@ func (pqsDb  *PostgresqlStorage) SaveFingerData(datas[]* knn2.ProcessData, useri
 	
 	return nil
 }
-func (pqsDb  *PostgresqlStorage) GetSampleFromdb(id int, dd string)([]*Rssiample,err){
+func (pqsDb  *PostgresqlStorage) GetSampleFromdb(id int, dd string)([]*Rssiample,error){
 	db := pqsDb.DB
-    if db==nil{
-        return nil,ErrNoPqSQLConn 
-    }
-	db = db.Table("samples")
-	dd1 := getTime(dd)
-	dd2 := Dateplus(dd,1)
-	var param []int
-	if id==0{
+    	if db==nil{
+        	return nil,ErrNoPqSQLConn 
+    	}
+    	db = db.Table("samples")
+    	dd1 := getTime(dd)
+    	dd2 := Dateplus(dd,1)
+    	var param []int
+	var users []*SampleData
+    	if id==0{
 		param = ch
-	}else {
+    	}else {
 		param = au
-	}
-	db.Where("infra_mac in (?)",params).Where("timestamp >= ? and timestamp <?",dd1,dd2).Find(&users)
-	var ret []*Rssiample
-	for _, d:=range users{
-		
-	}
+    	}
+    	db.Where("infra_mac in (?)",param).Where("timestamp >= ? and timestamp <?",dd1,dd2).Order("timestamp").Find(&users)
+    	var ret []*Rssiample
+    	for _, d:=range users{
+		mdat := &Rssiample{Ts:int(d.Ts), Imac:int64(d.Inframac), Dmac:d.Devmac, Rss:int(d.Rssi),Frq:int(d.Freq),Id:int(d.Id)}
+		fmt.Println(mdat)
+		ret = append(ret, mdat)	
+    	}
+    	return ret,nil
 	
 }
 func RedisInit(){
     conf:= &zoom.Configuration{
-        Address:"localhost:59999",
+        //Address:"localhost:59999",
+	Address:"localhost:6379",
         Network:"tcp",
     }
     zoom.Init(conf)
     zoom.Register(&knn2.Finger{})
     zoom.Register(&knn2.ProcessData{})
-	zoom.Register(&knn2.Finger2{})
+    zoom.Register(&knn2.Finger2{})
 }
 
 
 func main() {
-	var dbs *sql.DB
-	dbs = openDB()
-	testdb(dbs)
-	closeDB(dbs)
-	db := ormInit()
+	//var dbs *sql.DB
+	//dbs = openDB()
+	//testdb(dbs)
+	//closeDB(dbs)
+	//db := ormInit()
 	//doIter(db)
-	dd1:=getTime("2015-03-17 00:00:00")
-	dd2:=getTime("2015-03-18 00:00:00")
-	fectchItem(db,[]int{5,6,8},dd1,dd2)
-	loadFingers(1,db)
-	closeORdb(db)
+	//dd1:=getTime("2015-03-17 00:00:00")
+	//dd2:=getTime("2015-03-18 00:00:00")
+	//fectchItem(db,[]int{5,6,8},dd1,dd2)
+	//loadFingers(1,db)
+	//closeORdb(db)
+	obj := NewPostgresqlStorage()
+	//db:= obj.db
+	obj.GetSampleFromdb(0,"2015-03-17")
+	obj.CloseORdb()
 }

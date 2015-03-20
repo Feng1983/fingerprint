@@ -58,8 +58,9 @@ func Int2date(tt int64) string{
 func getTime(tt string) int64 {
     the_time, err := time.Parse("2006-01-02 15:04:05", tt)
     if err != nil {
-        unix_time := the_time.Unix()
-        fmt.Println(unix_time)
+        //unix_time := the_time.Unix()
+        //fmt.Println(unix_time)
+	return -1
     }
     return the_time.Unix()
 }

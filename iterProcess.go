@@ -9,7 +9,7 @@ import(
     //"os"
     //"bufio"
     "knn2"
-	"github.com/deckarep/golang-set"
+    "github.com/deckarep/golang-set"
 )
 func Init(){                                                                                                                                             
     conf:= &zoom.Configuration{

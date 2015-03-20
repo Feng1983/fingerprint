@@ -4,11 +4,11 @@ import(
 	"github.com/albrow/zoom"
 	"github.com/deckarep/golang-set"
 	"fmt"
-	"strconv"
-	"strings"
+	//"strconv"
+	//"strings"
 	"time"
-	"os"
-	"bufio"
+	//"os"
+	//"bufio"
 	"knn2"
 )
 
@@ -16,7 +16,7 @@ type Rssiample struct{
 	Id int
 	Ts int		`zoom:"index"`
 	Imac int64	`zoom:"index"`
-    Dmac int64	`zoom:"index"`
+    	Dmac int64	`zoom:"index"`
 	Rss  int
 	Frq  int
 	zoom.DefaultData
@@ -119,16 +119,14 @@ func etldata(samples []*Rssiample)[]* knn2.MapBaseSample{
 	return ret
 }
 
-func getSampleFromdb(id int, dd string)[]*Rssiample{
-	var ret []*Rssiample
-	
 
-}
 func procETLdata(id int, dd string) []*knn2.MapBaseSample{
 	var proc_data []* knn2.MapBaseSample
-	sp := getSampleFromdb(id, dd)
+	//sp := getSampleFromdb(id, dd)
+	sp := []*Rssiample{}
 	pp := etldata(sp)
 	cnt,rcnt:=0,0
+	rset := mapset.NewSet()
 	for _ , m:=range pp{
 		if len(m.Features)>=2{
             //str_time := time.Unix(int64(m.Timestamp), 0).Format("2006-01-02 15:04:05")
@@ -180,11 +178,12 @@ func processFingerDataById(id int,proc_data []*knn2.MapBaseSample) []*knn2.Proce
             prdata:= &knn2.ProcessData{Timestamp:m.Timestamp, Mac:m.Mac,X:mx, Y:my}
             fmt.Println(prdata)
             //zoom.Save(prdata)
-			append(ret,prdata)
+	    ret = append(ret,prdata)
         }
     }
-	return ret
+    return ret
 }
+/*
 
 func main(){
 	Init()
@@ -193,4 +192,4 @@ func main(){
 	
 	fmt.Println(time.Now().Sub(starttime))
 	defer zoom.Close()
-}
+}*/
