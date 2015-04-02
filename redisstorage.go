@@ -1,12 +1,10 @@
 package main
 
 import (
-	log "code.google.com/p/log4go"
+	log	"github.com/alecthomas/log4go" 
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/Terry-Mao/gopush-cluster/ketama"
-	myrpc "github.com/Terry-Mao/gopush-cluster/rpc"
 	"github.com/garyburd/redigo/redis"
 	"strconv"
 	"strings"
@@ -15,7 +13,7 @@ import (
 
 var (
 	RedisNoConnErr       = errors.New("can't get a redis conn")
-	redisProtocolSpliter = "@"
+	redisProtocolSpliter = ":"
 )
 
 // RedisMessage struct encoding the composite info.
@@ -30,11 +28,20 @@ type RedisDelMessage struct {
 	MIds []int64
 }
 
+
 type RedisStorage struct {
 	pool  map[string]*redis.Pool
-	ring  *ketama.HashRing
-	delCH chan *RedisDelMessage
+	//ring  *ketama.HashRing
+	//delCH chan *RedisDelMessage
 }
+
+type RedisMac struct{
+	Key  string
+	Value string
+	Ts   int64
+	Expire int64
+}
+
 
 // NewRedis initialize the redis pool and consistency hash ring.
 func NewRedisStorage() *RedisStorage {
@@ -118,6 +125,30 @@ func (s *RedisStorage) SavePrivate(key string, msg json.RawMessage, mid int64, e
 	}
 	return nil
 }
+//Save
+func (s *RedisStorage) SaveRedisMac(dat []*RedisMac)error{
+	if len(dat)==0{
+		log.Error("no data dump to redis")
+		return nil
+	}
+	conn := s.getConn(key)
+        if conn == nil {
+                return RedisNoConnErr
+        }
+        defer conn.Close()
+	for _, iter:=range data{
+		if err = conn.Send("ZADD", iter.Key, iter.Ts, iter.Value); err != nil {
+			log.Error("conn.Send(\"ZADD\", \"%s\", %d, \"%s\") error(%v)", iter.Key, iter.Ts, iter.Value, err)
+                	return err
+        	}
+	}
+	if err = conn.Flush(); err != nil {
+                log.Error("conn.Flush() error(%v)", err)
+                return err
+        }
+	return nil
+	
+} 
 
 // SavePrivates implements the Storage SavePrivates method.
 func (s *RedisStorage) SavePrivates(keys []string, msg json.RawMessage, mid int64, expire uint) (fkeys []string, err error) {
@@ -301,12 +332,3 @@ func (s *RedisStorage) getConn(key string) redis.Conn {
 	return s.getConnByNode(node)
 }
 
-func (s *RedisStorage) getConnByNode(node string) redis.Conn {
-	p, ok := s.pool[node]
-	if !ok {
-		log.Warn("no node: \"%s\" in redis pool", node)
-		return nil
-	}
-
-	return p.Get()
-}
