@@ -2,13 +2,14 @@ package main
 
 import (
 	log	"github.com/alecthomas/log4go" 
-	"encoding/json"
 	"errors"
 	"fmt"
 	"github.com/garyburd/redigo/redis"
 	"strconv"
 	"strings"
 	"time"
+	"github.com/albrow/zoom"
+	"github.com/Terry-Mao/gopush-cluster/ketama"
 )
 
 var (
@@ -17,21 +18,12 @@ var (
 )
 
 // RedisMessage struct encoding the composite info.
-type RedisPrivateMessage struct {
-	Msg    json.RawMessage `json:"msg"`    // message content
-	Expire int64           `json:"expire"` // expire second
-}
 
-// Struct for delele message
-type RedisDelMessage struct {
-	Key  string
-	MIds []int64
-}
 
 
 type RedisStorage struct {
-	pool  map[string]*redis.Pool
-	//ring  *ketama.HashRing
+	pool  map[string] *redis.Pool
+	ring  *ketama.HashRing
 	//delCH chan *RedisDelMessage
 }
 
@@ -41,6 +33,8 @@ type RedisMac struct{
 	Ts   int64
 	Expire int64
 }
+
+
 
 
 // NewRedis initialize the redis pool and consistency hash ring.
@@ -85,53 +79,17 @@ func NewRedisStorage() *RedisStorage {
 		ring.AddNode(nw[0], w)
 	}
 	ring.Bake()
-	s := &RedisStorage{pool: redisPool, ring: ring, delCH: make(chan *RedisDelMessage, 10240)}
-	go s.clean()
+	s := &RedisStorage{pool: redisPool, ring: ring}
 	return s
 }
 
-// SavePrivate implements the Storage SavePrivate method.
-func (s *RedisStorage) SavePrivate(key string, msg json.RawMessage, mid int64, expire uint) error {
-	rm := &RedisPrivateMessage{Msg: msg, Expire: int64(expire) + time.Now().Unix()}
-	m, err := json.Marshal(rm)
-	if err != nil {
-		log.Error("json.Marshal() key:\"%s\" error(%v)", key, err)
-		return err
-	}
-	conn := s.getConn(key)
-	if conn == nil {
-		return RedisNoConnErr
-	}
-	defer conn.Close()
-	if err = conn.Send("ZADD", key, mid, m); err != nil {
-		log.Error("conn.Send(\"ZADD\", \"%s\", %d, \"%s\") error(%v)", key, mid, string(m), err)
-		return err
-	}
-	if err = conn.Send("ZREMRANGEBYRANK", key, 0, -1*(Conf.RedisMaxStore+1)); err != nil {
-		log.Error("conn.Send(\"ZREMRANGEBYRANK\", \"%s\", 0, %d) error(%v)", key, -1*(Conf.RedisMaxStore+1), err)
-		return err
-	}
-	if err = conn.Flush(); err != nil {
-		log.Error("conn.Flush() error(%v)", err)
-		return err
-	}
-	if _, err = conn.Receive(); err != nil {
-		log.Error("conn.Receive() error(%v)", err)
-		return err
-	}
-	if _, err = conn.Receive(); err != nil {
-		log.Error("conn.Receive() error(%v)", err)
-		return err
-	}
-	return nil
-}
 //Save
-func (s *RedisStorage) SaveRedisMac(dat []*RedisMac)error{
+func (s *RedisStorage) SaveRedisMac(dat []*RedisMac,node string)error{
 	if len(dat)==0{
 		log.Error("no data dump to redis")
 		return nil
 	}
-	conn := s.getConn(key)
+	conn := s.getConnByNode(node)
         if conn == nil {
                 return RedisNoConnErr
         }
@@ -147,179 +105,65 @@ func (s *RedisStorage) SaveRedisMac(dat []*RedisMac)error{
                 return err
         }
 	return nil
-	
 } 
 
-// SavePrivates implements the Storage SavePrivates method.
-func (s *RedisStorage) SavePrivates(keys []string, msg json.RawMessage, mid int64, expire uint) (fkeys []string, err error) {
-	// split as node
-	nodes := map[string][]string{}
-	fkeysMap := make(map[string]bool, len(keys))
-	for _, k := range keys {
-		node := s.ring.Hash(k)
-		d, ok := nodes[node]
-		if !ok {
-			d = []string{k}
-		} else {
-			d = append(d, k)
-		}
-		nodes[node] = d
-		fkeysMap[k] = true
+func (s *RedisStorage) SaveRssi(dat []*Rssiample) error{
+	if len(dat)==0{
+		return nil
 	}
-	// append return value
-	defer func() {
-		for k, _ := range fkeysMap {
-			fkeys = append(fkeys, k)
-		}
-	}()
-	// raw msg
-	rm := &RedisPrivateMessage{Msg: msg, Expire: int64(expire) + time.Now().Unix()}
-	m, err := json.Marshal(rm)
-	if err != nil {
-		log.Error("json.Marshal() key:\"%s\" error(%v)", keys, err)
-		return
-	}
-	// batch
-	for n, k := range nodes {
-		conn := s.getConnByNode(n)
-		if conn == nil {
-			log.Error("cann`t get redis connection by node:%s", n)
-			err = RedisNoConnErr
-			return
-		}
-		// pipeline batch msgs
-		for _, key := range k {
-			if err = conn.Send("ZADD", key, mid, m); err != nil {
-				conn.Close()
-				log.Error("conn.Send(\"ZADD\", \"%s\", %d, \"%s\") error(%v)", key, mid, string(m), err)
-				return
-			}
-			if err = conn.Send("ZREMRANGEBYRANK", key, 0, -1*(Conf.RedisMaxStore+1)); err != nil {
-				conn.Close()
-				log.Error("conn.Send(\"ZREMRANGEBYRANK\", \"%s\", 0, %d) error(%v)", key, -1*(Conf.RedisMaxStore+1), err)
-				return
-			}
-		}
-		// flush commands
-		if err = conn.Flush(); err != nil {
-			conn.Close()
-			log.Error("conn.Flush() error(%v)", err)
-			return
-		}
-		// receive
-		for j := 0; j < len(k); j++ {
-			if _, err = conn.Receive(); err != nil {
-				conn.Close()
-				log.Error("conn.Receive() error(%v)", err)
-				return
-			}
-			// delete succeed key
-			delete(fkeysMap, k[j])
-			if _, err = conn.Receive(); err != nil {
-				conn.Close()
-				log.Error("conn.Receive() error(%v)", err)
-				return
-			}
-		}
-		conn.Close()
-	}
-	return
-}
-
-// GetPrivate implements the Storage GetPrivate method.
-func (s *RedisStorage) GetPrivate(key string, mid int64) ([]*myrpc.Message, error) {
-	conn := s.getConn(key)
-	if conn == nil {
-		return nil, RedisNoConnErr
-	}
-	defer conn.Close()
-	values, err := redis.Values(conn.Do("ZRANGEBYSCORE", key, fmt.Sprintf("(%d", mid), "+inf", "WITHSCORES"))
-	if err != nil {
-		log.Error("conn.Do(\"ZRANGEBYSCORE\", \"%s\", \"%d\", \"+inf\", \"WITHSCORES\") error(%v)", key, mid, err)
-		return nil, err
-	}
-	msgs := make([]*myrpc.Message, 0, len(values))
-	delMsgs := []int64{}
-	now := time.Now().Unix()
-	for len(values) > 0 {
-		cmid := int64(0)
-		b := []byte{}
-		values, err = redis.Scan(values, &b, &cmid)
-		if err != nil {
-			log.Error("redis.Scan() error(%v)", err)
-			return nil, err
-		}
-		rm := &RedisPrivateMessage{}
-		if err = json.Unmarshal(b, rm); err != nil {
-			log.Error("json.Unmarshal(\"%s\", rm) error(%v)", string(b), err)
-			delMsgs = append(delMsgs, cmid)
-			continue
-		}
-		// check expire
-		if rm.Expire < now {
-			log.Warn("user_key: \"%s\" msg: %d expired", key, cmid)
-			delMsgs = append(delMsgs, cmid)
-			continue
-		}
-		m := &myrpc.Message{MsgId: cmid, Msg: rm.Msg, GroupId: myrpc.PrivateGroupId}
-		msgs = append(msgs, m)
-	}
-	// delete unmarshal failed and expired message
-	if len(delMsgs) > 0 {
-		select {
-		case s.delCH <- &RedisDelMessage{Key: key, MIds: delMsgs}:
-		default:
-			log.Warn("user_key: \"%s\" send del messages failed, channel full", key)
-		}
-	}
-	return msgs, nil
-}
-
-// DelPrivate implements the Storage DelPrivate method.
-func (s *RedisStorage) DelPrivate(key string) error {
-	conn := s.getConn(key)
-	if conn == nil {
-		return RedisNoConnErr
-	}
-	defer conn.Close()
-	if _, err := conn.Do("DEL", key); err != nil {
-		log.Error("conn.Do(\"DEL\", \"%s\") error(%v)", key, err)
-		return err
+	for _, v:=range dat{
+		zoom.Save(v)
 	}
 	return nil
 }
 
-// DelMulti implements the Storage DelMulti method.
-func (s *RedisStorage) clean() {
-	for {
-		info := <-s.delCH
-		conn := s.getConn(info.Key)
-		if conn == nil {
-			log.Warn("get redis connection nil")
-			continue
-		}
-		for _, mid := range info.MIds {
-			if err := conn.Send("ZREMRANGEBYSCORE", info.Key, mid, mid); err != nil {
-				log.Error("conn.Send(\"ZREMRANGEBYSCORE\", \"%s\", %d, %d) error(%v)", info.Key, mid, mid, err)
-				conn.Close()
-				continue
-			}
-		}
-		if err := conn.Flush(); err != nil {
-			log.Error("conn.Flush() error(%v)", err)
-			conn.Close()
-			continue
-		}
-		for _, _ = range info.MIds {
-			_, err := conn.Receive()
-			if err != nil {
-				log.Error("conn.Receive() error(%v)", err)
-				conn.Close()
-				continue
-			}
-		}
-		conn.Close()
+func (s *RedisStorage) GetRedisRssi(storeid int, startTs,endTs int64,ids []int)[]*Rssiample{
+	
+	//conn:= getConnByNode(node)
+	
+	var sp []*Rssiample
+
+	query:= zoom.NewQuery("Rssiample").Order("Ts").Filter("Ts >= ",startTs).Filter("Ts < ",endTs)
+	for _,item:=range ids{
+		query.Filter("Imac = ",item) 
 	}
+        
+        //if err:= zoom.NewQuery("Rssiample").Order("Ts").Filter("").Filter().Scan(&sp);err!=nil{
+	if err:= query.Scan(&sp);err!=nil{
+            	panic(err)
+        }
+	return sp
+}
+
+func(s *RedisStorage)SaveFingerData(dat []*knn2.ProcessData , storeid int, node string) error{
+	conn:= s.getConnByNode(node)
+	
+	if len(dat)==0 {
+		return nil
+	}
+	
+	if conn == nil {
+		return RedisNoConnErr
+	}
+	defer conn.Close()
+	
+	for _, iter:=range dat{
+		key:= string(storeid)+":"+iter.Mac+":"+iter.Timestamp
+		
+		conn.Do("HMSET",key,"Mac",int64(iter.Mac), "storeid",storeid,"timestamp",iter.Timestamp, "X",iter.X,"Y",iter.Y)
+		conn.Do("ZADD",iter.Timestamp, key)
+	}
+	return nil
+}
+
+func (s *RedisStorage) getConnByNode(node string) redis.Conn {
+	p, ok := s.pool[node]
+	if !ok {
+		log.Warn("no node: \"%s\" in redis pool", node)
+		return nil
+	}
+
+	return p.Get()
 }
 
 // getConn get the connection of matching with key using ketama hashing.
@@ -331,4 +175,5 @@ func (s *RedisStorage) getConn(key string) redis.Conn {
 	log.Debug("user_key: \"%s\" hit redis node: \"%s\"", key, node)
 	return s.getConnByNode(node)
 }
+
 

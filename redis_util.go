@@ -47,7 +47,15 @@ func GetRedisStat(addr string) (map[string]string, error) {
 	return m, nil
 }
 func GetRedisConfig(addr string, configName string) (string, error) {
-	c, err := redis.DialTimeout("tcp", addr, defaultTimeout, defaultTimeout, defaultTimeout)
-	if err != nil {
+	//c, err := redis.DialTimeout("tcp", addr, defaultTimeout, defaultTimeout, defaultTimeout)
+	//if err != nil {
+	//}
+	return "", nil
+}
+
+func main(){
+	p,_:=GetRedisStat(":6379")
+	for k, v:=range p{
+		fmt.Println(k,v)
 	}
 }

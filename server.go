@@ -1,6 +1,6 @@
 package main
 import(
-	""
+	"log"
 	"fmt"
 	"net"
 	"os"
@@ -20,7 +20,7 @@ func main(){
 		}
 		Log(conn.RemoteAddr().String(),"tcp connect success")
 		go handleConnection(conn)
-	}
+      }
 }
 
 func handleConnection(conn net.Conn){
@@ -46,4 +46,15 @@ func reader(readerChannel chan[]byte){
 				Log(string(data))
 		}
 	}
+}
+
+func Log(v ...interface{}) {
+    fmt.Println(v...)
+}
+
+func CheckError(err error) {
+    if err != nil {
+        fmt.Fprintf(os.Stderr, "Fatal error: %s", err.Error())
+        os.Exit(1)
+    }
 }

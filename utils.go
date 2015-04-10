@@ -3,7 +3,11 @@ package main
 import (
 	"sort"
 	"time"
-	//"fmt"
+	"net"
+	
+        //"bytes"
+        //"encoding/binary"
+	"fmt"
 )
 
 type sortedIntMap struct{
@@ -35,10 +39,7 @@ func SortIntMap(m map[int]float64)[]int{
 }
 
 func Dateplus(dd string ,delta int) int64{
-	t1,err := time.Parse("2006-01-02",dd)
-	if err!=nil	{
-		return -1
-	}
+	t1 := time.Unix(getTime(dd),0)
 	t2 := t1.AddDate(0,0,delta)
 	return t2.Unix()
 }
@@ -52,24 +53,55 @@ func Datebyoff(delta int) int64{
 }
 
 func Int2date(tt int64) string{
-	return time.Unix(tt,0).Format("2006-01-02")
+	return time.Unix(tt,0).Format("2006-01-02 15:04:05")
 }
 
 func getTime(tt string) int64 {
-    the_time, err := time.Parse("2006-01-02 15:04:05", tt)
+    
+    the_time, err := time.Parse("2006-01-02", tt)
     if err != nil {
-        //unix_time := the_time.Unix()
-        //fmt.Println(unix_time)
 	return -1
     }
-    return the_time.Unix()
+    y,m,d := the_time.Date()
+    newtime := time.Date(y,m,d,0,0,0,0,time.Local)
+    return newtime.Unix()
+}
+func getTimeDetail(tt string) int64{
+    the_time, err := time.Parse("2006-01-02 15:04:05", tt)
+    if err != nil {
+        return -1
+    }
+    return the_time.Unix()-8*60*60
 }
 
-//func main(){
-//	fmt.Println(time.Parse("2006-01-02","2015-03-12"))
-//	fmt.Println(dateplus("2015-03-12",8))
-//	v2:= dateplus("2015-03-12",30)
-//	fmt.Println(Int2date(v2))
-//	fmt.Println(today())
-//	fmt.Println(datebyoff(0))
-//}
+func Str2Mac(mc string) uint64{
+        bmac,err:=net.ParseMAC(mc)
+        if err!=nil{
+		fmt.Println(bmac)
+                return 0
+        }
+        return BytesToMac(bmac)
+}
+func BytesToMac(b[] byte) uint64{
+        var r uint64
+        var x uint8
+
+        for i:=0;i<6;i++{
+                //x = uint64(binary.LittleEndian.Uint8(b[i:i+1]))
+		x=uint8(b[i])
+                r = r<<8 + uint64(x)
+        }
+	//fmt.Println(b,r)
+    	//r = uint64(binary.LittleEndian.Uint64(b))
+        return r
+}
+
+/*
+func main(){
+	//fmt.Println(time.Parse("2006-01-02","2015-03-12"))
+	fmt.Println(Dateplus("2015-03-12",15))
+	v2:= Dateplus("2015-03-12",15)
+	fmt.Println(Int2date(v2),Int2date(1427385600))
+	fmt.Println(Today(),getTime("2015-03-27"))
+	fmt.Println(Datebyoff(0), getTimeDetail("2015-03-27 23:23:46"),time.Now().Unix(),time.Now().String())
+}*/

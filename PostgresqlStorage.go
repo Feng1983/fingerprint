@@ -17,7 +17,16 @@ var (
 	ErrNoData		   = errors.New("NO data found.")
 	ErrExist		   = errors.New("data exists ,return.")
 )
+type InfraMac  struct{
+	Id	int
+	Mac	string
+}
 
+type DwellProc struct{
+        Mac     int64
+        ST      int64
+        Dwell   int64
+}
 
 type SampleData struct {
 	Id       int32
@@ -35,6 +44,14 @@ type FinMatchData struct{
 	Mac		int64
 	X		float64
 	Y		float64 
+}
+type DwellData struct{
+	StoreId int32 `gorm:"column:store_id"`
+	UserId  int32 `gorm:"column:user_id"`
+	Mac             int64
+	VisitTs		int64 `gorm:"column:visit_time"`
+	StayTime	int64 `gorm:"column:staytime"`
+	Datetime	time.Time `gorm:"column:datetime"`	
 }
 
 type PostgresqlStorage struct{
@@ -114,7 +131,7 @@ func (pqsDb  *PostgresqlStorage) LoadFingers(loc int) error{
 	if db==nil{
 		return ErrNoPqSQLConn
 	}
-	res,_ := zoom.NewQuery("Finger2").Filter("Id= ",loc).Count()
+	res,_ := zoom.NewQuery("Finger2").Filter("Aid =",loc).Count()
 	if res !=0{
 	 return ErrNoData
 	}
@@ -134,9 +151,31 @@ func (pqsDb  *PostgresqlStorage) LoadFingers(loc int) error{
 		fs[int64(d.Ap2)]= d.Freq2
 		fs[int64(d.Ap3)]= d.Freq3
 		
-		fin:=&knn2.Finger2{Id:id,Label:d.Id,X:d.X,Y:d.Y,Feature:fs}
+		fin:=&knn2.Finger2{Aid:id,Label:d.Id,X:d.X,Y:d.Y,Feature:fs}
 		fmt.Println(fin)
 		zoom.Save(fin)
+	}
+	return nil
+}
+func (pqsDb  *PostgresqlStorage) IterFinData(loc int) error{
+	res, _:= zoom.NewQuery("Finger2").Filter("Aid =",loc).Count()
+	fmt.Println(res)
+	//res2,_:= zoom.NewQuery("Finger2").Scan(persons)//.Count()
+	var persons  []*knn2.Finger2
+	res2,_ :=zoom.NewQuery("Finger2").Count()
+	zoom.NewQuery("Finger2").Scan(&persons)
+	for _, d:=range persons{
+		fmt.Println(d, d.Id)
+	}
+	fmt.Println(res2,res)
+	return nil
+}
+func (pqsDb  *PostgresqlStorage)DelteById(loc int) error{
+	var persons  []*knn2.Finger2
+	zoom.NewQuery("Finger2").Scan(&persons)
+	for _, d:=range persons{
+		fmt.Println(d)
+		zoom.DeleteById("Finger2",d.GetId())
 	}
 	return nil
 }
@@ -148,11 +187,14 @@ func saveDate(db *gorm.DB)error{
 func (pqsDb  *PostgresqlStorage) SaveFingerData(datas[]* knn2.ProcessData, userid, storeid int) error{
 	db := pqsDb.DB
 	if db==nil{
+		fmt.Println("no db...")
 		return ErrNoPqSQLConn
 	}
 	if len(datas)==0{
 		return  ErrNoData
 	}
+	db=db.Table("result_match")
+	cnt:=0
 	for _, d:=range datas{
 		ds:= FinMatchData{
 			StoreId:int32(storeid),
@@ -161,20 +203,71 @@ func (pqsDb  *PostgresqlStorage) SaveFingerData(datas[]* knn2.ProcessData, useri
 			Mac:d.Mac,
 			X: d.X,
 			Y: d.Y,		
-		}	
+		}
+		fmt.Println(ds)	
 		db.Create(&ds)
+		cnt++
 	}
+	fmt.Println("num insert...",cnt)
 	
 	return nil
 }
+
+func (pqsDb  *PostgresqlStorage) SaveDwellData(datas[]*DwellProc ,userid, storeid int,date string) error{
+	db:=  pqsDb.DB
+	if db==nil{
+		fmt.Println("no db...")
+		return ErrNoPqSQLConn
+	}
+	if len(datas)==0{
+		return ErrNoData
+	}
+	db = db.Table("dwell_time")
+	cnt:=0
+	dd:=time.Unix(getTime(date),0)
+	for _, d:=range datas{
+		var datasheet_0 *DwellData
+		datasheet_0 =  &DwellData{
+			StoreId:int32(storeid),
+			UserId:int32(userid),
+			Mac: d.Mac,
+			StayTime: d.Dwell,
+			VisitTs: d.ST,
+			Datetime: dd,				
+		}
+
+		fmt.Println(datasheet_0)
+		if &datasheet_0 ==nil{
+			fmt.Println(datasheet_0,d)
+			continue
+		}
+		//db.Save(datasheet_0)
+		//db.NewRecord(&datasheet_0)
+		//db.Create(datasheet_0)
+		db.FirstOrCreate(datasheet_0,DwellData{
+                        StoreId:int32(storeid),
+                        UserId:int32(userid),
+                        Mac: d.Mac,
+                        StayTime: d.Dwell,
+                        VisitTs: d.ST,
+                        Datetime: dd,
+                })
+		cnt++
+	}
+	fmt.Println("num insert ...",cnt)
+	return nil
+}
+
 func (pqsDb  *PostgresqlStorage) GetSampleFromdb(id int, dd string)([]*Rssiample,error){
 	db := pqsDb.DB
     	if db==nil{
+		fmt.Println("db is nil")
         	return nil,ErrNoPqSQLConn 
     	}
     	db = db.Table("samples")
     	dd1 := getTime(dd)
     	dd2 := Dateplus(dd,1)
+	fmt.Println(Int2date(dd1),Int2date(dd2))
     	var param []int
 	var users []*SampleData
     	if id==0{
@@ -186,11 +279,27 @@ func (pqsDb  *PostgresqlStorage) GetSampleFromdb(id int, dd string)([]*Rssiample
     	var ret []*Rssiample
     	for _, d:=range users{
 		mdat := &Rssiample{Ts:int(d.Ts), Imac:int64(d.Inframac), Dmac:d.Devmac, Rss:int(d.Rssi),Frq:int(d.Freq),Id:int(d.Id)}
-		fmt.Println(mdat)
+		//fmt.Println(mdat)
 		ret = append(ret, mdat)	
     	}
     	return ret,nil
 	
+}
+func (pqsDb  *PostgresqlStorage) GetDeviceMap() (map[uint64]int,error) {
+	dmap := make(map[uint64]int)
+	db := pqsDb.DB
+	if db==nil{
+                fmt.Println("db is nil")
+                return nil,ErrNoPqSQLConn
+        }
+        db = db.Table("infrastructure")
+	var devices []*InfraMac
+	db.Find(&devices)
+	for _,v :=range devices {
+		fmt.Println(v,Str2Mac(v.Mac))
+		dmap[Str2Mac(v.Mac)]=v.Id
+	}
+	return dmap,nil 
 }
 func RedisInit(){
     conf:= &zoom.Configuration{
@@ -204,7 +313,7 @@ func RedisInit(){
     zoom.Register(&knn2.Finger2{})
 }
 
-
+/*
 func main() {
 	//var dbs *sql.DB
 	//dbs = openDB()
@@ -221,4 +330,4 @@ func main() {
 	//db:= obj.db
 	obj.GetSampleFromdb(0,"2015-03-17")
 	obj.CloseORdb()
-}
+}*/

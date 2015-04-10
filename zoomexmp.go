@@ -24,7 +24,7 @@ type Rssiample struct{
 	Id int
 	Ts int		`zoom:"index"`
 	Imac int64	`zoom:"index"`
-    Dmac int64	`zoom:"index"`
+    	Dmac int64	`zoom:"index"`
 	Rss  int
 	Frq  int
 	zoom.DefaultData

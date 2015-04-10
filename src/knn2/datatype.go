@@ -40,8 +40,8 @@ type FingerOri struct{
 }
 
 type Finger2 struct{
-    Id	   int      `zoom:"index"`
-	Label  int      `zoom:"index"`
+    Aid	   int      `zoom:"index"`
+    Label  int      `zoom:"index"`
     X      float64
     Y      float64
     Feature map[int64] float64
