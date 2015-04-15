@@ -7,14 +7,19 @@ import (
 	"github.com/garyburd/redigo/redis"
 	"strconv"
 	"strings"
-	"time"
+	//"time"
 	"github.com/albrow/zoom"
 	"github.com/Terry-Mao/gopush-cluster/ketama"
+	"knn2"
+)
+const (
+	ketamaBase       = 255
 )
 
 var (
 	RedisNoConnErr       = errors.New("can't get a redis conn")
 	redisProtocolSpliter = ":"
+	RedisInst  *RedisStorage
 )
 
 // RedisMessage struct encoding the composite info.
@@ -24,7 +29,6 @@ var (
 type RedisStorage struct {
 	pool  map[string] *redis.Pool
 	ring  *ketama.HashRing
-	//delCH chan *RedisDelMessage
 }
 
 type RedisMac struct{
@@ -33,8 +37,6 @@ type RedisMac struct{
 	Ts   int64
 	Expire int64
 }
-
-
 
 
 // NewRedis initialize the redis pool and consistency hash ring.
@@ -54,7 +56,7 @@ func NewRedisStorage() *RedisStorage {
 			panic(err)
 		}
 		// get protocol and addr
-		pw := strings.Split(addr, redisProtocolSpliter)
+		pw := strings.Split(addr, "@")
 		if len(pw) != 2 {
 			log.Error("strings.Split(\"%s\", \"%s\") failed (%v)", addr, redisProtocolSpliter, err)
 			panic(fmt.Sprintf("config redis.source node:\"%s\" format error", addr))
@@ -62,14 +64,16 @@ func NewRedisStorage() *RedisStorage {
 		tmpProto := pw[0]
 		tmpAddr := pw[1]
 		// WARN: closures use
+		//tmp := addr
+		log.Info(tmpProto," | ",tmpAddr)
 		redisPool[nw[0]] = &redis.Pool{
 			MaxIdle:     Conf.RedisMaxIdle,
 			MaxActive:   Conf.RedisMaxActive,
 			IdleTimeout: Conf.RedisIdleTimeout,
 			Dial: func() (redis.Conn, error) {
-				conn, err := redis.Dial(tmpProto, tmpAddr)
+				conn, err := redis.Dial("tcp", tmpAddr)
 				if err != nil {
-					log.Error("redis.Dial(\"%s\", \"%s\") error(%v)", tmpProto, tmpAddr, err)
+					log.Error("redis.Dial(\"tcp\", \"%s\") error(%v)", tmpAddr, err)
 					return nil, err
 				}
 				return conn, err
@@ -94,13 +98,15 @@ func (s *RedisStorage) SaveRedisMac(dat []*RedisMac,node string)error{
                 return RedisNoConnErr
         }
         defer conn.Close()
-	for _, iter:=range data{
-		if err = conn.Send("ZADD", iter.Key, iter.Ts, iter.Value); err != nil {
+	for _, iter:=range dat{
+		if err := conn.Send("ZADD", iter.Key, iter.Ts, iter.Value); err != nil {
+			//key storeid:mac:ts
 			log.Error("conn.Send(\"ZADD\", \"%s\", %d, \"%s\") error(%v)", iter.Key, iter.Ts, iter.Value, err)
+			fmt.Println(err)
                 	return err
         	}
 	}
-	if err = conn.Flush(); err != nil {
+	if err := conn.Flush(); err != nil {
                 log.Error("conn.Flush() error(%v)", err)
                 return err
         }
@@ -112,6 +118,8 @@ func (s *RedisStorage) SaveRssi(dat []*Rssiample) error{
 		return nil
 	}
 	for _, v:=range dat{
+		log.Info("save...", v)
+		//log.Info("insert ... ",v.Imac," ",v.Dmac," ",v.Ts," ",v.Rss," ",v.Frq," ",v)
 		zoom.Save(v)
 	}
 	return nil
@@ -119,19 +127,42 @@ func (s *RedisStorage) SaveRssi(dat []*Rssiample) error{
 
 func (s *RedisStorage) GetRedisRssi(storeid int, startTs,endTs int64,ids []int)[]*Rssiample{
 	
-	//conn:= getConnByNode(node)
-	
-	var sp []*Rssiample
+	sp := []* Rssiample{}
+	fmt.Println("ids is .. ",ids)
+	log.Info("ids is .. ",ids)
 
-	query:= zoom.NewQuery("Rssiample").Order("Ts").Filter("Ts >= ",startTs).Filter("Ts < ",endTs)
+	zmquery := zoom.NewQuery("Rssiample").Order("Ts").Filter("Ts >=",int(startTs))//.Filter("Ts <",int(endTs))
 	for _,item:=range ids{
-		query.Filter("Imac = ",item) 
+		zmquery.Filter("Imac =",int64(item))
+		fmt.Println("Imac is ",item," query ",zmquery) 
+		log.Info("Imac is ",item)
 	}
+	cnt,_:=zmquery.Count()
+	fmt.Println(" query ",zmquery," ",cnt)
         
+	//pps,_ := zoom.FindById("Rssiample","SMlyWvpyqHPqjQE1nmn50q")
+	//fmt.Println(pps)
+	//if ms,ok :=pps.(*Rssiample);!ok{
+		
+	//}else{
+	//	fmt.Println(ms)
+	//}
+	//return sp
         //if err:= zoom.NewQuery("Rssiample").Order("Ts").Filter("").Filter().Scan(&sp);err!=nil{
-	if err:= query.Scan(&sp);err!=nil{
+	if err:= zmquery.Scan(&sp);err!=nil{
             	panic(err)
         }
+	//results,err := zmquery.Run()
+	//sp = results.([]*Rssiample)
+	//if err!=nil{
+	//	fmt.Println(err)
+	//}
+	//for _,rs:=range sp{
+		//if person, ok := rs.(*Rssiample); !ok {
+	//		fmt.Println(rs," ",rs.Imac,rs.Ts)
+		//}
+	//}
+	fmt.Println(len(sp))
 	return sp
 }
 
@@ -146,13 +177,30 @@ func(s *RedisStorage)SaveFingerData(dat []*knn2.ProcessData , storeid int, node 
 		return RedisNoConnErr
 	}
 	defer conn.Close()
-	
+	zkey:= strconv.Itoa(storeid)+":fingersort"
+	var key string
 	for _, iter:=range dat{
-		key:= string(storeid)+":"+iter.Mac+":"+iter.Timestamp
+		key = strconv.Itoa(storeid)+":"+strconv.FormatInt(iter.Mac,10)+":"+strconv.FormatInt(iter.Timestamp,10)
 		
-		conn.Do("HMSET",key,"Mac",int64(iter.Mac), "storeid",storeid,"timestamp",iter.Timestamp, "X",iter.X,"Y",iter.Y)
-		conn.Do("ZADD",iter.Timestamp, key)
+		//conn.Do("HMSET",key,"Mac",int64(iter.Mac), "storeid",storeid,"timestamp",iter.Timestamp, "X",iter.X,"Y",iter.Y)
+		if err := conn.Send("HMSET",key,"Mac",int64(iter.Mac), "storeid",storeid,"timestamp",iter.Timestamp, "X",iter.X,"Y",iter.Y);err !=nil{
+			log.Error("conn.Send(\"HMset\", \"%s\") error(%v)",zkey,err)
+			return err
+		}
+		
+		if err := conn.Send("ZADD", zkey, iter.Timestamp, key); err != nil {
+                        //key storeid:mac:ts
+                        log.Error("conn.Send(\"ZADD\", \"%s\", %d, \"%s\") error(%v)", zkey, iter.Timestamp, key, err)
+                        fmt.Println(err)
+                        return err
+                }
+		
+		//conn.Do("ZADD",zkey, iter.Timestamp, key)
 	}
+	if err := conn.Flush(); err != nil {
+                log.Error("conn.Flush() error(%v)", err)
+                return err
+        }
 	return nil
 }
 
@@ -176,4 +224,19 @@ func (s *RedisStorage) getConn(key string) redis.Conn {
 	return s.getConnByNode(node)
 }
 
+func (s *RedisStorage)Clear(){
+	zoom.Close()
+}
 
+func InitRedis(){
+	RedisInst = NewRedisStorage()
+	conf:= &zoom.Configuration{
+                Address:"localhost:6379",
+                Network:"tcp",
+        }
+        zoom.Init(conf)
+        zoom.Register(&Rssiample{})
+        zoom.Register(&knn2.Finger{})
+        zoom.Register(&knn2.Finger2{})
+        zoom.Register(&knn2.ProcessData{})	
+}

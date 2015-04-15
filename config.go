@@ -1,10 +1,8 @@
 package main
 
 import (
-    //"encoding/json"
     "flag"
     "fmt"
-    //"io/ioutil"
     "runtime"
     "time"
     "github.com/Terry-Mao/goconf"
@@ -76,6 +74,7 @@ func InitConfig() error {
             if err != nil {
                 return fmt.Errorf("config section: \"redis.addrs\" key: \"%s\" error(%v)", key, err)
             }
+	    fmt.Println(key," | ",addr)
             Conf.RedisSource[key] = addr
         }
     } 

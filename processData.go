@@ -13,7 +13,7 @@ import(
 )
 
 type Rssiample struct{
-	Id int
+	//Id int
 	Ts int		`zoom:"index"`
 	Imac int64	`zoom:"index"`
     	Dmac int64	`zoom:"index"`
@@ -209,6 +209,16 @@ func cron_proc(date string, storeid int) {
         obj.CloseORdb()
         defer zoom.Close()
 }
+
+func real_finger_data(storeid int, lastTs  int64, ids []int){
+	dat:= RedisInst.GetRedisRssi(storeid , lastTs, lastTs+100000 ,ids)
+	PqStorage.LoadFingers(storeid)
+	proc_dat := procETLdata(storeid,"",dat)
+	res:=processFingerDataById(storeid,proc_dat)
+	
+	RedisInst.SaveFingerData(res,0,"node1")
+	
+}
 /*
 func main(){
 	Init()
@@ -228,11 +238,23 @@ func main(){
 	obj.CloseORdb()
 	defer zoom.Close()
 }*/
+/*
 func main(){
 	Init()
 	//cron_proc("2015-03-17",1)
-	obj := NewPostgresqlStorage()
-	obj.GetDeviceMap()
-	obj.CloseORdb()
-        defer zoom.Close()
-}
+	//obj := NewPostgresqlStorage()
+	//obj.GetDeviceMap()
+	//fmt.Println(obj.GetDeviceId(89104077082),uint64(89104077082))
+	//obj.CloseORdb()
+        //defer zoom.Close()
+	
+	dates:=[]string{"2015-03-30","2015-03-31","2015-04-01","2015-04-02","2015-04-03","2015-04-04","2015-04-05"}
+        for _,v:=range dates{
+                fmt.Println(v)
+                if v=="2015-03-31"{
+                        continue
+                }
+                time.Sleep(2*time.Second);
+                cron_proc(v,1)
+        }
+}*/

@@ -16,6 +16,8 @@ var (
 	ErrNoPqSQLConn     = errors.New("can't get a mysql db")
 	ErrNoData		   = errors.New("NO data found.")
 	ErrExist		   = errors.New("data exists ,return.")
+	DeviceMap = make(map[uint64]int)
+	PqStorage   *PostgresqlStorage
 )
 type InfraMac  struct{
 	Id	int
@@ -60,11 +62,11 @@ type PostgresqlStorage struct{
 
 //init sqlStorage
 func NewPostgresqlStorage() *PostgresqlStorage{
-	db, err := gorm.Open("postgres", "host=123.57.254.158 user=postgres password=111111 dbname=ailink_wifi sslmode=disable")
+    db, err := gorm.Open("postgres", "host=123.57.254.158 user=postgres password=111111 dbname=ailink_wifi sslmode=disable")
     if err != nil {
         fmt.Println("connection error...", err)
     }
-	RedisInit()
+    RedisInit2()
     return &PostgresqlStorage{DB:&db}
 }
 
@@ -180,9 +182,6 @@ func (pqsDb  *PostgresqlStorage)DelteById(loc int) error{
 	return nil
 }
 
-func saveDate(db *gorm.DB)error{
-	return nil
-}
 
 func (pqsDb  *PostgresqlStorage) SaveFingerData(datas[]* knn2.ProcessData, userid, storeid int) error{
 	db := pqsDb.DB
@@ -247,9 +246,9 @@ func (pqsDb  *PostgresqlStorage) SaveDwellData(datas[]*DwellProc ,userid, storei
 		db.FirstOrCreate(datasheet_0,DwellData{
                         StoreId:int32(storeid),
                         UserId:int32(userid),
-                        Mac: d.Mac,
-                        StayTime: d.Dwell,
-                        VisitTs: d.ST,
+                        Mac: int64(d.Mac),
+                        StayTime: int64(d.Dwell),
+                        VisitTs: int64(d.ST),
                         Datetime: dd,
                 })
 		cnt++
@@ -278,7 +277,7 @@ func (pqsDb  *PostgresqlStorage) GetSampleFromdb(id int, dd string)([]*Rssiample
     	db.Where("infra_mac in (?)",param).Where("timestamp >= ? and timestamp <?",dd1,dd2).Order("timestamp").Find(&users)
     	var ret []*Rssiample
     	for _, d:=range users{
-		mdat := &Rssiample{Ts:int(d.Ts), Imac:int64(d.Inframac), Dmac:d.Devmac, Rss:int(d.Rssi),Frq:int(d.Freq),Id:int(d.Id)}
+		mdat := &Rssiample{Ts:int(d.Ts), Imac:int64(d.Inframac), Dmac:int64(d.Devmac), Rss:int(d.Rssi),Frq:int(d.Freq)}
 		//fmt.Println(mdat)
 		ret = append(ret, mdat)	
     	}
@@ -301,7 +300,22 @@ func (pqsDb  *PostgresqlStorage) GetDeviceMap() (map[uint64]int,error) {
 	}
 	return dmap,nil 
 }
-func RedisInit(){
+func (pqsDb  *PostgresqlStorage)GetDeviceId(id uint64) int{
+	if val,exist:= DeviceMap[id];exist{
+		return val;
+	}
+	var err error
+	DeviceMap ,err = pqsDb.GetDeviceMap()
+	if err!=nil{
+		fmt.Println(err)
+	}
+	if val,exist:= DeviceMap[id];exist{
+                return val;
+        }else{
+		return -1;
+	}	
+}
+func RedisInit2(){
     conf:= &zoom.Configuration{
         //Address:"localhost:59999",
 	Address:"localhost:6379",
@@ -311,6 +325,9 @@ func RedisInit(){
     zoom.Register(&knn2.Finger{})
     zoom.Register(&knn2.ProcessData{})
     zoom.Register(&knn2.Finger2{})
+}
+func InitPostgreStorage(){
+	PqStorage =  NewPostgresqlStorage()
 }
 
 /*
